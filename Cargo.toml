@@ -1,0 +1,33 @@
+[package]
+name = "tempshare"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.86"
+axum = { version = "0.7.4", features = ["multipart"] }
+axum-extra = { version = "0.9.3", features = ["typed-header"] }
+axum-range = "0.4.0"
+axum_thiserror = "0.1.0"
+chrono = "0.4.38"
+futures = "0.3.30"
+maud = { version = "0.26.0", features = ["axum"] }
+mime_guess = "2.0.5"
+
+# needs to be this version for shuttle compatibility
+opendal = "0.45"
+relative-path = { version = "1.9.3", features = ["serde"] }
+shuttle-axum = "0.46.0"
+shuttle-opendal = "0.46.0"
+shuttle-runtime = { version = "0.46.0", default-features = false }
+thiserror = "1.0.63"
+tokio = "1.28.2"
+tokio-cron-scheduler = "0.10.2"
+tokio-util = "0.7.11"
+tower-http = { version = "0.5.2", features = ["trace"] }
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
+uuid = { version = "1.10.0", features = ["v7"] }
+
+[dev-dependencies]
+cargo-watch = "8.5.2"
