@@ -1,9 +1,15 @@
-use axum::{extract::DefaultBodyLimit, routing::get, Router};
+use std::path::PathBuf;
+
+use axum::{
+    extract::DefaultBodyLimit,
+    routing::{get, get_service},
+    Router,
+};
 use cleanup::cleanup;
 use opendal::Operator;
 use service::TempShareService;
 use tokio_cron_scheduler::{Job, JobScheduler};
-use tower_http::trace::TraceLayer;
+use tower_http::{services::ServeDir, trace::TraceLayer};
 
 mod cleanup;
 mod components;
@@ -27,6 +33,12 @@ async fn main(
         .layer(DefaultBodyLimit::disable())
         .route("/shared/:file_name", get(routes::shared::get_shared))
         .route("/stream/:file_name", get(routes::stream::get_stream))
+        .nest_service(
+            "/public",
+            get_service(ServeDir::new(
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("public"),
+            )),
+        )
         .layer(TraceLayer::new_for_http())
         .with_state(storage.clone());
 

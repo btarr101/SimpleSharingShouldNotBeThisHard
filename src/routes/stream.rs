@@ -18,6 +18,9 @@ pub enum GetStreamError {
     #[error("Invalid filename is not UUID.EXT.")]
     #[status(StatusCode::BAD_REQUEST)]
     InvalidFileName,
+    #[error("UUID needs to be v7.")]
+    #[status(StatusCode::BAD_REQUEST)]
+    InvalidUUIDVersion,
     #[error("UUID has an invalid timestamp.")]
     #[status(StatusCode::BAD_REQUEST)]
     InvalidUUIDTimestamp,
@@ -39,7 +42,9 @@ pub async fn get_stream(
         .and_then(|stem| Uuid::try_parse(stem).ok())
         .ok_or(GetStreamError::InvalidFileName)?;
 
-    let expiration_timestamp = uuid.get_timestamp().unwrap();
+    let expiration_timestamp = uuid
+        .get_timestamp()
+        .ok_or(GetStreamError::InvalidUUIDVersion)?;
     let (seconds, subsec_nanos) = expiration_timestamp.to_unix();
     let expiration_datetime = match chrono::Utc.timestamp_opt(seconds as i64, subsec_nanos) {
         chrono::offset::LocalResult::Single(datetime) => Ok(datetime),

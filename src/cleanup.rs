@@ -36,6 +36,7 @@ pub async fn cleanup(storage: Operator) -> Result<(), CleanupError> {
         })
         .await;
 
+    tracing::debug!("Cleanup finished!");
     Ok(())
 }
 

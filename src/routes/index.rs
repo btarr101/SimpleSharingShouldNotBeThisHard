@@ -2,7 +2,7 @@ use axum::{
     extract::{multipart::Field, Multipart, State},
     response::{IntoResponse, Redirect, Response},
 };
-use futures::TryStreamExt;
+use futures::{Stream, TryStreamExt};
 use maud::{html, Markup, Render};
 use opendal::Operator;
 use relative_path::RelativePath;
@@ -12,25 +12,28 @@ use crate::{components::page::page, util::get_directory_for_expiration};
 
 fn index_page(error: Option<&dyn Render>) -> Markup {
     page(html! {
+        h2 { "Share file" }
         form method="post" enctype="multipart/form-data" {
-            p {
-                label for="share-for" { "Share for " }
+            fieldset {
+                legend { "Share File" }
+                label for="share-for" { "Share for: " }
                 select id="share-for" name="Share for" {
-                    option { "30 seconds" }
                     option { "15 minutes" }
                     option { "1 hour" }
                     option { "1 day" }
                     option { "1 week" }
                     option { "DEBUG -2 hours" }
                 }
-            }
-            p {
-                input type="file" name="File" {}
-            }
-            input type="submit" accept="audio/*,video/*,image/*" {}
-            @if let Some(error) = error {
-                div {
-                    (error)
+                br;br;
+                label for="file" { "File: " }
+                input id="file" type="file" name="File" required {}
+                br;br;
+                input type="submit" accept="audio/*,video/*,image/*" required {}
+                @if let Some(error) = error {
+                    br;br;
+                    em {
+                        (error)
+                    }
                 }
             }
         }
@@ -55,37 +58,20 @@ impl IntoResponse for PostIndexError {
 
 pub async fn get_index() -> Markup { index_page(None) }
 
-async fn get_and_validate_multipart_field<'a>(
-    field_name: &'static str,
-    multipart: &'a mut Multipart,
-) -> Result<Field<'a>, PostIndexError> {
-    let field = multipart
-        .next_field()
-        .await
-        .map_err(|err| PostIndexError::Unkown(err.into()))?
-        .ok_or(PostIndexError::MissingField(field_name))?;
-
-    if field.name() != Some(field_name) {
-        Err(PostIndexError::MissingField(field_name))
-    } else {
-        Ok(field)
-    }
-}
-
 pub async fn post_index(
     State(storage): State<Operator>,
     mut multipart: Multipart,
 ) -> Result<Redirect, PostIndexError> {
     // Use the Share For field to create a timestamped UUID with the expiration date
-    // This lets us avoid the need to use any sort of other persistance such as a
+    // This lets us avoid needing to use any sort of other persistance such as a
     // database.
     let share_for_field = get_and_validate_multipart_field("Share for", &mut multipart).await?;
     let share_for_field_value = share_for_field
         .text()
         .await
         .map_err(|err| PostIndexError::Unkown(err.into()))?;
+
     let share_for = match share_for_field_value.as_str() {
-        "30 seconds" => chrono::Duration::seconds(30),
         "1 hour" => chrono::Duration::hours(1),
         "1 day" => chrono::Duration::days(1),
         "1 week" => chrono::Duration::weeks(1),
@@ -121,23 +107,45 @@ pub async fn post_index(
     let directory = get_directory_for_expiration(expiration_datetime);
     let file_path = directory.join(format!("{uuid}.{extension}"));
 
-    let mut writer = storage
-        .writer(file_path.as_str())
+    write_file(&file_path, body_with_io_error, &storage)
         .await
         .map_err(|err| PostIndexError::Unkown(err.into()))?;
-    let sink_result = writer
-        .sink(body_with_io_error)
+
+    Ok(Redirect::to(&format!("/shared/{uuid}.{extension}")))
+}
+
+async fn get_and_validate_multipart_field<'a>(
+    field_name: &'static str,
+    multipart: &'a mut Multipart,
+) -> Result<Field<'a>, PostIndexError> {
+    let field = multipart
+        .next_field()
         .await
-        .map_err(|err| PostIndexError::Unkown(err.into()));
-    writer
-        .close()
-        .await
-        .map_err(|err| PostIndexError::Unkown(err.into()))?;
+        .map_err(|err| PostIndexError::Unkown(err.into()))?
+        .ok_or(PostIndexError::MissingField(field_name))?;
+
+    if field.name() != Some(field_name) {
+        Err(PostIndexError::MissingField(field_name))
+    } else {
+        Ok(field)
+    }
+}
+
+async fn write_file<S, T>(
+    file_path: &RelativePath,
+    body: S,
+    storage: &Operator,
+) -> Result<(), opendal::Error>
+where
+    S: Stream<Item = opendal::Result<T>>,
+    T: Into<axum::body::Bytes>,
+{
+    let mut writer = storage.writer(file_path.as_str()).await?;
+    let sink_result = writer.sink(body).await;
+    writer.close().await?;
 
     // We want to make sure the writer is closed before propagating an error,
     // which is why we don't propagate the sink result until after the close
     // operation.
-    sink_result?;
-
-    Ok(Redirect::to(&format!("/shared/{uuid}.{extension}")))
+    sink_result.map(|_| ())
 }
