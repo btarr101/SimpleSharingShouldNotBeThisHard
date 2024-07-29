@@ -32,7 +32,7 @@ Benjamin Tarr
 
 ## License
 
-This project is licensed under the [TODO NAME HERE] License - see the LICENSE.md file for details
+See the LICENSE.md file for details
 
 ## Acknowledgments
 
