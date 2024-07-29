@@ -12,7 +12,17 @@ use crate::{components::page::page, util::get_directory_for_expiration};
 
 fn index_page(error: Option<&dyn Render>) -> Markup {
     page(html! {
-        form method="post" enctype="multipart/form-data" {
+        form method="post" enctype="multipart/form-data"
+        _="on htmx:xhr:progress(loaded, total)
+            if error exists
+                set error.hidden to true
+            end
+            then set #progress.value to (loaded/total)*100
+            then if #progress.value == 0 or #progress.value == 100
+                set #progress.hidden to true
+            else
+                set #progress.hidden to false
+            end" {
             fieldset {
                 h2 { "Share file" }
                 label for="share-for" { "Share for: " }
@@ -28,13 +38,15 @@ fn index_page(error: Option<&dyn Render>) -> Markup {
                 input id="file" type="file" accept="*" name="File" required;
                 br;br;
                 input type="submit";
+                br;
+                br;
+                progress id="progress" hidden value=(0) max=(100) {};
                 @if let Some(error) = error {
-                    br;br;
-                    em {
+                    em id="error" {
                         (error)
                     }
+                    br;br;
                 }
-                br;br;
             }
         }
     })

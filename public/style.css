@@ -40,6 +40,10 @@ body {
   margin: auto;
 }
 
+progress {
+  width: 100%;
+}
+
 img, video, audio {
   max-width: 100%;
   object-fit: scale-down;

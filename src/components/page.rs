@@ -20,8 +20,10 @@ pub fn page(content: Markup) -> Markup {
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 title { "SimpleSharingShouldNotBeThisHard.com" }
                 link rel="stylesheet" type="text/css" href=(css_source);
+                script src="/public/js/htmx.min.js" {};
+                script src="/public/js/hyperscript.min.js" {};
             }
-            body {
+            body hx-boost="true" {
                 header {
                     center {
                         h1 { "SimpleSharingShouldNotBeThisHard.com" }

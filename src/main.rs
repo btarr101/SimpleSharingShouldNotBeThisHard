@@ -38,7 +38,7 @@ async fn main(
 
     scheduler
         .add(
-            Job::new_async("*/30 * * * *", move |_uuid, _l| {
+            Job::new_async("* 1/30 * * * *", move |_uuid, _l| {
                 let storage = storage.clone(); // Clone storage just for this task
                 Box::pin(async move {
                     if let Err(err) = cleanup(storage).await {
