@@ -29,8 +29,6 @@ TODO
 Contributors names and contact info
 
 Benjamin Tarr
-ex. Dominique Pizzie  
-ex. [@DomPizzie](https://twitter.com/dompizzie)
 
 ## License
 
