@@ -3273,6 +3273,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "simplesharingshouldnotbethishard"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum 0.7.5",
+ "axum-extra",
+ "axum-range",
+ "axum_thiserror",
+ "cargo-watch",
+ "chrono",
+ "futures",
+ "humantime",
+ "maud",
+ "mime_guess",
+ "opendal",
+ "relative-path",
+ "shuttle-axum",
+ "shuttle-opendal",
+ "shuttle-runtime",
+ "thiserror",
+ "tokio",
+ "tokio-cron-scheduler",
+ "tokio-util",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "siphasher"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3479,36 +3509,6 @@ dependencies = [
  "fastrand",
  "rustix",
  "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "tempshare"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum 0.7.5",
- "axum-extra",
- "axum-range",
- "axum_thiserror",
- "cargo-watch",
- "chrono",
- "futures",
- "humantime",
- "maud",
- "mime_guess",
- "opendal",
- "relative-path",
- "shuttle-axum",
- "shuttle-opendal",
- "shuttle-runtime",
- "thiserror",
- "tokio",
- "tokio-cron-scheduler",
- "tokio-util",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]

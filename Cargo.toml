@@ -1,5 +1,5 @@
 [package]
-name = "tempshare"
+name = "simplesharingshouldnotbethishard"
 version = "0.1.0"
 edition = "2021"
 
@@ -14,8 +14,6 @@ futures = "0.3.30"
 humantime = "2.1.0"
 maud = { version = "0.26.0", features = ["axum"] }
 mime_guess = "2.0.5"
-
-# needs to be this version for shuttle compatibility
 opendal = "0.45"
 relative-path = { version = "1.9.3", features = ["serde"] }
 shuttle-axum = "0.46.0"

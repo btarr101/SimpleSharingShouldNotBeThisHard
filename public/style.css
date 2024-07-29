@@ -1,0 +1,61 @@
+:root {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+@media only screen and (min-width: 320px) {
+  body {
+    max-width: none;
+  }
+}
+@media only screen and (min-width: 640px) {
+  body {
+    max-width: 640px;
+  }
+}
+@media only screen and (min-width: 768px) {
+  body {
+    max-width: 768px;
+  }
+}
+@media only screen and (min-width: 1024px) {
+  body {
+    max-width: 1024px;
+  }
+}
+@media only screen and (min-width: 1280px) {
+  body {
+    max-width: 1280px;
+  }
+}
+
+html {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: center;
+  min-height: 100%;
+}
+
+body {
+  margin: auto;
+}
+
+img, video, audio {
+  max-width: 100%;
+  object-fit: scale-down;
+}
+
+center {
+  max-width: 100%;
+}
+
+article {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-evenly;
+}
+
+section {
+  max-width: 256px;
+  padding: 8px;
+}

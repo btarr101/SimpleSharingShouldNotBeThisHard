@@ -1,10 +1,6 @@
 use std::path::PathBuf;
 
-use axum::{
-    extract::DefaultBodyLimit,
-    routing::{get, get_service},
-    Router,
-};
+use axum::{extract::DefaultBodyLimit, routing::get, Router};
 use cleanup::cleanup;
 use opendal::Operator;
 use service::TempShareService;
@@ -19,12 +15,8 @@ mod util;
 
 #[shuttle_runtime::main]
 async fn main(
-    #[shuttle_opendal::Opendal(scheme = "memory")] storage: Operator,
+    #[shuttle_opendal::Opendal(scheme = "s3")] storage: Operator,
 ) -> Result<TempShareService, shuttle_runtime::Error> {
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
-        .init();
-
     let router = Router::new()
         .route(
             "/",
@@ -35,9 +27,7 @@ async fn main(
         .route("/stream/:file_name", get(routes::stream::get_stream))
         .nest_service(
             "/public",
-            get_service(ServeDir::new(
-                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("public"),
-            )),
+            ServeDir::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("public")),
         )
         .layer(TraceLayer::new_for_http())
         .with_state(storage.clone());
@@ -48,7 +38,7 @@ async fn main(
 
     scheduler
         .add(
-            Job::new_async("1/20 * * * * *", move |_uuid, _l| {
+            Job::new_async("*/30 * * * *", move |_uuid, _l| {
                 let storage = storage.clone(); // Clone storage just for this task
                 Box::pin(async move {
                     if let Err(err) = cleanup(storage).await {

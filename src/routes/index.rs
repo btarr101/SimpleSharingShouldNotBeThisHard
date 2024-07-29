@@ -12,29 +12,29 @@ use crate::{components::page::page, util::get_directory_for_expiration};
 
 fn index_page(error: Option<&dyn Render>) -> Markup {
     page(html! {
-        h2 { "Share file" }
         form method="post" enctype="multipart/form-data" {
             fieldset {
-                legend { "Share File" }
+                h2 { "Share file" }
                 label for="share-for" { "Share for: " }
                 select id="share-for" name="Share for" {
-                    option { "15 minutes" }
+                    option { "1 minute" }
+                    option selected { "15 minutes" }
                     option { "1 hour" }
                     option { "1 day" }
                     option { "1 week" }
-                    option { "DEBUG -2 hours" }
                 }
                 br;br;
                 label for="file" { "File: " }
-                input id="file" type="file" name="File" required {}
+                input id="file" type="file" accept="*" name="File" required;
                 br;br;
-                input type="submit" accept="audio/*,video/*,image/*" required {}
+                input type="submit";
                 @if let Some(error) = error {
                     br;br;
                     em {
                         (error)
                     }
                 }
+                br;br;
             }
         }
     })
@@ -48,7 +48,7 @@ pub enum PostIndexError {
     MissingFileName,
     #[error("Unkown file type.")]
     UnknownFileType,
-    #[error(transparent)]
+    #[error("Unkown error.")]
     Unkown(#[from] anyhow::Error),
 }
 
@@ -72,10 +72,10 @@ pub async fn post_index(
         .map_err(|err| PostIndexError::Unkown(err.into()))?;
 
     let share_for = match share_for_field_value.as_str() {
+        "1 minute" => chrono::Duration::minutes(1),
         "1 hour" => chrono::Duration::hours(1),
         "1 day" => chrono::Duration::days(1),
         "1 week" => chrono::Duration::weeks(1),
-        "DEBUG -2 hours" => chrono::Duration::hours(-2),
         _ => chrono::Duration::minutes(15),
     };
     let expiration_datetime = chrono::Utc::now() + share_for;
@@ -140,7 +140,10 @@ where
     S: Stream<Item = opendal::Result<T>>,
     T: Into<axum::body::Bytes>,
 {
-    let mut writer = storage.writer(file_path.as_str()).await?;
+    let mut writer = storage
+        .writer_with(file_path.as_str())
+        .buffer(625000)
+        .await?;
     let sink_result = writer.sink(body).await;
     writer.close().await?;
 

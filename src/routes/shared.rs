@@ -99,21 +99,30 @@ pub async fn get_shared(
     .flatten();
 
     Ok(page(html! {
-        h2 { "Viewing " code { (file_name) }}
-        @if file_exists {
-            div {
+        fieldset {
+            h2 { "Viewing " code { (file_name) }}
+            @if file_exists {
                 p {
                     "This file expires in " (expires_in) "."
                 }
+                ul {
+                    li { a href=(file_source) download=(file_name) { "Download" } }
+                    br;
+                    li {
+                        a href="" { "Share" }
+                        " (Right click and choose \"Copy Link Address\")"
+                    }
+                }
                 @if let Some(file_viewer) = file_viewer {
-                    (file_viewer)
+                    br;
+                    center {
+                        (file_viewer)
+                    }
+                    br;
                 }
-                p {
-                    a href=(file_source) download=(file_name) { "Download" };
-                }
+            } @else {
+                p { "This file has either expired or never even existed in the first place." }
             }
-        } @else {
-            p { "This file has either expired or never even existed in the first place." }
         }
     }))
 }
