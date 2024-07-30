@@ -1,7 +1,7 @@
 use chrono::Utc;
 use maud::{html, Markup, DOCTYPE};
 
-pub fn page(content: Markup) -> Markup {
+pub fn page(head_additions: Option<Markup>, content: Markup, is_index: bool) -> Markup {
     let css_source = if cfg!(debug_assertions) {
         format!("/public/style.css?version={}", Utc::now())
     } else {
@@ -18,15 +18,44 @@ pub fn page(content: Markup) -> Markup {
                 meta charset="utf8";
                 meta name="description" content="Upload files here for quick an easy temporary sharing!";
                 meta name="viewport" content="width=device-width, initial-scale=1";
+                meta name="msapplication-TileColor" content="#da532c";
+                meta name="theme-color" content="#ffffff";
+
                 title { "SimpleSharingShouldNotBeThisHard.com" }
+
                 link rel="stylesheet" type="text/css" href=(css_source);
-                script src="/public/js/htmx.min.js" {};
-                script src="/public/js/hyperscript.min.js" {};
+                link rel="apple-touch-icon" sizes="180x180" href="/public/apple-touch-icon.png";
+                link rel="icon" type="image/png" sizes="32x32" href="/public/favicon-32x32.png";
+                link rel="icon" type="image/png" sizes="16x16" href="/public/favicon-16x16.png";
+                link rel="manifest" href="/public/site.webmanifest";
+                link rel="mask-icon" href="/public/safari-pinned-tab.svg" color="#5bbad5";
+
+                script src="/public/js/htmx.min.js" defer {};
+                script src="/public/js/hyperscript.min.js" defer {};
+                script src="/public/js/htmx-ext-loading-states.js" defer {};
+
+                @if let Some(head_additions) = head_additions {
+                    (head_additions)
+                }
             }
-            body hx-boost="true" {
+            body hx-boost="true" hx-ext="loading-states" {
                 header {
                     center {
-                        h1 { "SimpleSharingShouldNotBeThisHard.com" }
+                        h1 {
+                            "Simple" wbr;
+                            "Sharing" wbr;
+                            "Should" wbr;
+                            "Not" wbr;
+                            "Be" wbr;
+                            "This" wbr;
+                            "Hard.com" wbr;
+                        }
+                        @if !is_index {
+                            nav {
+                                a href="/" disabled { "Share a new file" }
+                            }
+                            br;
+                        }
                     }
                 }
                 main {

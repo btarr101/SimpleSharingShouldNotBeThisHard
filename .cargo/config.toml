@@ -1,2 +1,7 @@
+[alias]
+r = "shuttle run"
+hot = ["watch", "-i", "public/*", "-qcx", "shuttle run"]
+
 [env]
 GITHUB_SITE = "https://github.com/btarr101/SimpleSharingShouldNotBeThisHard"
+OPENDAL_SCHEME = "s3"

@@ -63,3 +63,7 @@ section {
   max-width: 256px;
   padding: 8px;
 }
+
+[data-loading] {
+  display: none;
+}

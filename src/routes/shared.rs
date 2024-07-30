@@ -2,18 +2,19 @@ use std::str::from_utf8;
 
 use axum::{
     extract::{Path, State},
+    http::StatusCode,
     response::{IntoResponse, Response},
 };
 use chrono::{DateTime, TimeZone, Utc};
 use humantime::format_duration;
-use maud::{html, Markup};
+use maud::{html, Markup, PreEscaped};
 use mime_guess::{mime, Mime};
 use opendal::Operator;
 use relative_path::{RelativePath, RelativePathBuf};
 use uuid::Uuid;
 
 use crate::{
-    components::{internal_server_error::internal_server_error, not_found::not_found, page::page},
+    components::{error_page::error_page, page::page},
     util::get_directory_for_expiration,
 };
 
@@ -34,8 +35,14 @@ impl IntoResponse for GetSharedError {
         match self {
             GetSharedError::InvalidFileName
             | GetSharedError::InvalidUUIDTimestamp
-            | GetSharedError::InvalidUUIDVersion => not_found(),
-            GetSharedError::Unkown(_) => internal_server_error(),
+            | GetSharedError::InvalidUUIDVersion => error_page(
+                StatusCode::NOT_FOUND,
+                "File name is invalid and therefore could not be found.",
+            ),
+            GetSharedError::Unkown(_) => error_page(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "An unknown error occured when trying view file.",
+            ),
         }
         .into_response()
     }
@@ -98,33 +105,64 @@ pub async fn get_shared(
     .flatten()
     .flatten();
 
-    Ok(page(html! {
-        fieldset {
-            h2 { "Viewing " code { (file_name) }}
-            @if file_exists {
-                p {
-                    "This file expires in " (expires_in) "."
-                }
-                ul {
-                    li { a href=(file_source) download=(file_name) { "Download" } }
-                    br;
-                    li {
-                        a href="" { "Share" }
-                        " (Right click and choose \"Copy Link Address\")"
-                    }
-                }
-                @if let Some(file_viewer) = file_viewer {
-                    br;
-                    center {
-                        (file_viewer)
-                    }
-                    br;
-                }
-            } @else {
-                p { "This file has either expired or never even existed in the first place." }
+    let timer_script = format!(
+        "init repeat forever wait 1s then js return formatDuration(new Date(\"{}\") - new Date()) end then put it into me end",
+        expiration_datetime
+    );
+
+    Ok(page(
+        html! {
+            script defer {
+                (PreEscaped(
+r#"
+function formatDuration(ms) {
+    const time = {
+        days: Math.floor(ms / 86400000),
+        h: Math.floor(ms / 3600000) % 24,
+        m: Math.floor(ms / 60000) % 60,
+        s: Math.floor(ms / 1000) % 60,
+    };
+    return Object.entries(time)
+    .filter(val => val[1] !== 0)
+    .map(([key, val]) => `${val}${key}`)
+    .join(' ');
+};
+"#
+                ))
             }
         }
-    }))
+        .into(),
+        html! {
+            fieldset {
+                h2 { "Viewing " code { (file_name) }}
+                @if file_exists {
+                    p {
+                        "This file expires in "
+                        time _=(timer_script) {
+                            (expires_in)
+                        }
+                        "."
+                    }
+                    ul {
+                        li { a href=(file_source) download=(file_name) { "Download" } }
+                        br;
+                        li {
+                            a href="" { "Share" }
+                            " (Right click and choose \"Copy Link Address\")"
+                        }
+                    }
+                    @if let Some(file_viewer) = file_viewer {
+                        br;
+                        (file_viewer)
+                        br;
+                    }
+                } @else {
+                    p { "This file has either expired or never even existed in the first place." }
+                }
+            }
+        },
+        false,
+    ))
 }
 
 async fn file_viewer(
@@ -136,16 +174,22 @@ async fn file_viewer(
     let file_source = format!("/stream/{file_name}");
     match (mime.type_(), mime.subtype()) {
         (mime::VIDEO, _) => Ok(Some(html!(
-            video controls {
-                source src=(file_source) type=(mime.to_string());
+            center {
+                video controls {
+                    source src=(file_source) type=(mime.to_string());
+                }
             }
         ))),
         (mime::IMAGE, _) => Ok(Some(html!(
-            img src=(file_source) alt="Shared image";
+            center {
+                img src=(file_source) alt="Shared image";
+            }
         ))),
         (mime::AUDIO, _) => Ok(Some(html!(
-            audio controls {
-                source src=(file_source) type=(mime.to_string());
+            center {
+                audio controls {
+                    source src=(file_source) type=(mime.to_string());
+                }
             }
         ))),
         (mime::TEXT, _) => {

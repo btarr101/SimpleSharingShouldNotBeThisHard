@@ -11,7 +11,7 @@ pub enum CleanupError {
 }
 
 pub async fn cleanup(storage: Operator) -> Result<(), CleanupError> {
-    tracing::debug!("Entering cleanup...");
+    tracing::info!("Starting cleanup");
 
     let lister = storage
         .lister("")
@@ -36,7 +36,7 @@ pub async fn cleanup(storage: Operator) -> Result<(), CleanupError> {
         })
         .await;
 
-    tracing::debug!("Cleanup finished!");
+    tracing::info!("Cleanup finished!");
     Ok(())
 }
 
