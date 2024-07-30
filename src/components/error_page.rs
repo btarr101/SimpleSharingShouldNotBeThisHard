@@ -7,7 +7,6 @@ pub fn error_page(status_code: StatusCode, error_text: &str) -> (StatusCode, Mar
     (
         status_code,
         page(
-            None,
             html! {
                 center {
                     h1 { (status_code) }

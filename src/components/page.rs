@@ -1,7 +1,7 @@
 use chrono::Utc;
-use maud::{html, Markup, DOCTYPE};
+use maud::{html, Markup, PreEscaped, DOCTYPE};
 
-pub fn page(head_additions: Option<Markup>, content: Markup, is_index: bool) -> Markup {
+pub fn page(content: Markup, is_index: bool) -> Markup {
     let css_source = if cfg!(debug_assertions) {
         format!("/public/style.css?version={}", Utc::now())
     } else {
@@ -33,9 +33,23 @@ pub fn page(head_additions: Option<Markup>, content: Markup, is_index: bool) -> 
                 script src="/public/js/htmx.min.js" defer {};
                 script src="/public/js/hyperscript.min.js" defer {};
                 script src="/public/js/htmx-ext-loading-states.js" defer {};
-
-                @if let Some(head_additions) = head_additions {
-                    (head_additions)
+                script defer {
+                    (PreEscaped(
+r#"
+function formatDuration(ms) {
+    const time = {
+        days: Math.floor(ms / 86400000),
+        h: Math.floor(ms / 3600000) % 24,
+        m: Math.floor(ms / 60000) % 60,
+        s: Math.floor(ms / 1000) % 60,
+    };
+    return Object.entries(time)
+    .filter(val => val[1] !== 0)
+    .map(([key, val]) => `${val}${key}`)
+    .join(' ');
+};
+"#
+                    ))
                 }
             }
             body hx-boost="true" hx-ext="loading-states" {

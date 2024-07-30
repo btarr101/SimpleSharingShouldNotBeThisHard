@@ -7,7 +7,7 @@ use axum::{
 };
 use chrono::{DateTime, TimeZone, Utc};
 use humantime::format_duration;
-use maud::{html, Markup, PreEscaped};
+use maud::{html, Markup};
 use mime_guess::{mime, Mime};
 use opendal::Operator;
 use relative_path::{RelativePath, RelativePathBuf};
@@ -111,27 +111,6 @@ pub async fn get_shared(
     );
 
     Ok(page(
-        html! {
-            script defer {
-                (PreEscaped(
-r#"
-function formatDuration(ms) {
-    const time = {
-        days: Math.floor(ms / 86400000),
-        h: Math.floor(ms / 3600000) % 24,
-        m: Math.floor(ms / 60000) % 60,
-        s: Math.floor(ms / 1000) % 60,
-    };
-    return Object.entries(time)
-    .filter(val => val[1] !== 0)
-    .map(([key, val]) => `${val}${key}`)
-    .join(' ');
-};
-"#
-                ))
-            }
-        }
-        .into(),
         html! {
             fieldset {
                 h2 { "Viewing " code { (file_name) }}

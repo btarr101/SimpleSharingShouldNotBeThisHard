@@ -21,7 +21,6 @@ static SHARE_FOR_OPTIONS: phf::OrderedMap<&str, chrono::Duration> = phf::phf_ord
 
 fn index_page(error: Option<&dyn Render>) -> Markup {
     page(
-        None,
         html! {
             form method="post" enctype="multipart/form-data"
             _="on submit set #progress.value to 0 on htmx:xhr:progress(loaded, total) set #progress.value to (loaded/total)*100" {
