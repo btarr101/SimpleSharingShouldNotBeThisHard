@@ -45,14 +45,8 @@ async fn main(
             ServeDir::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("public")),
         )
         .layer(TraceLayer::new_for_http())
-        .with_state(storage.clone());
-
-    let router = if cfg!(debug_assertions) {
-        router.route("/500", get(routes::debug_routes::get_500))
-    } else {
-        router
-    }
-    .fallback(not_found);
+        .with_state(storage.clone())
+        .fallback(not_found);
 
     let scheduler = JobScheduler::new()
         .await
