@@ -32,14 +32,15 @@ async fn main(
         .init();
     tracing::info!("Tracing is initialized!");
 
+    // TODO: Move this setup into a constructor for the `TempShareService`.
     let router = Router::new()
-        .route(
-            "/",
-            get(routes::index::get_index).post(routes::index::post_index),
-        )
+        .route("/", get(routes::index::get).post(routes::index::post))
         .layer(DefaultBodyLimit::disable())
-        .route("/shared/:file_name", get(routes::shared::get_shared))
-        .route("/stream/:file_name", get(routes::stream::get_stream))
+        .route(
+            "/file/:file_name",
+            get(routes::file::index::get).post(routes::file::index::post),
+        )
+        .route("/file/:file_name/view", get(routes::file::view::get))
         .nest_service(
             "/public",
             ServeDir::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("public")),

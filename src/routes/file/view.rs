@@ -19,7 +19,7 @@ use crate::{
 };
 
 #[derive(thiserror::Error, Debug)]
-pub enum GetSharedError {
+pub enum GetError {
     #[error("Invalid filename is not UUID.EXT.")]
     InvalidFileName,
     #[error("UUID needs to be v7.")]
@@ -30,16 +30,16 @@ pub enum GetSharedError {
     Unkown(#[from] anyhow::Error),
 }
 
-impl IntoResponse for GetSharedError {
+impl IntoResponse for GetError {
     fn into_response(self) -> Response {
         match self {
-            GetSharedError::InvalidFileName
-            | GetSharedError::InvalidUUIDTimestamp
-            | GetSharedError::InvalidUUIDVersion => error_page(
+            GetError::InvalidFileName
+            | GetError::InvalidUUIDTimestamp
+            | GetError::InvalidUUIDVersion => error_page(
                 StatusCode::NOT_FOUND,
                 "File name is invalid and therefore could not be found.",
             ),
-            GetSharedError::Unkown(_) => error_page(
+            GetError::Unkown(_) => error_page(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "An unknown error occured when trying view file.",
             ),
@@ -48,37 +48,39 @@ impl IntoResponse for GetSharedError {
     }
 }
 
-pub async fn get_shared(
+pub async fn get(
     State(storage): State<Operator>,
     Path(file_name): Path<RelativePathBuf>,
-) -> Result<Markup, GetSharedError> {
+) -> Result<Markup, GetError> {
     let uuid = file_name
         .file_stem()
         .and_then(|stem| Uuid::try_parse(stem).ok())
-        .ok_or(GetSharedError::InvalidFileName)?;
+        .ok_or(GetError::InvalidFileName)?;
 
-    let expiration_timestamp = uuid
-        .get_timestamp()
-        .ok_or(GetSharedError::InvalidUUIDVersion)?;
+    let expiration_timestamp = uuid.get_timestamp().ok_or(GetError::InvalidUUIDVersion)?;
     let (seconds, subsec_nanos) = expiration_timestamp.to_unix();
     let expiration_datetime = match chrono::Utc.timestamp_opt(seconds as i64, subsec_nanos) {
         chrono::offset::LocalResult::Single(datetime) => Ok(datetime),
-        _ => Err(GetSharedError::InvalidUUIDTimestamp),
+        _ => Err(GetError::InvalidUUIDTimestamp),
     }?;
 
     let now = chrono::Utc::now();
     let file_exists = if now < expiration_datetime {
         let directory = get_directory_for_expiration(expiration_datetime);
+        let path = directory.join(format!("{file_name}/"));
 
-        storage
-            .is_exist(directory.join(&file_name).as_str())
-            .await
-            .map_err(|err| GetSharedError::Unkown(err.into()))?
+        match storage.stat(path.as_str()).await {
+            Ok(_) => Ok(true),
+            Err(err) => match err.kind() {
+                opendal::ErrorKind::NotFound => Ok(false),
+                _ => Err(GetError::Unkown(err.into())),
+            },
+        }?
     } else {
         false
     };
 
-    let file_source = format!("/stream/{file_name}");
+    let file_source = format!("/file/{file_name}");
     let expires_in = (expiration_datetime - now)
         .to_std()
         .map(|duration| {
@@ -150,7 +152,7 @@ async fn file_viewer(
     expiration_datetime: DateTime<Utc>,
     storage: &Operator,
 ) -> anyhow::Result<Option<Markup>> {
-    let file_source = format!("/stream/{file_name}");
+    let file_source = format!("/file/{file_name}");
     match (mime.type_(), mime.subtype()) {
         (mime::VIDEO, _) => Ok(Some(html!(
             center {
