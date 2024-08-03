@@ -1,11 +1,12 @@
 use axum::{
-    extract::{multipart::Field, Multipart, State},
+    extract::{multipart::Field, Multipart, Query, State},
     response::{IntoResponse, Redirect, Response},
 };
 use futures::{Stream, TryStreamExt};
 use maud::{html, Markup, Render};
 use opendal::Operator;
 use relative_path::RelativePath;
+use serde::Deserialize;
 use uuid::{NoContext, Timestamp, Uuid};
 
 use crate::{components::page::page, util::get_directory_for_expiration};
@@ -53,6 +54,8 @@ fn index_page(error: Option<&dyn Render>) -> Markup {
     )
 }
 
+pub async fn get_index() -> Markup { index_page(None) }
+
 #[derive(thiserror::Error, Debug)]
 pub enum PostIndexError {
     #[error("'{0}' is required!")]
@@ -66,13 +69,24 @@ pub enum PostIndexError {
 }
 
 impl IntoResponse for PostIndexError {
-    fn into_response(self) -> Response { index_page(Some(&self.to_string())).into_response() }
+    fn into_response(self) -> Response {
+        if let PostIndexError::Unkown(error) = &self {
+            tracing::error!("Unkown error encountered for user: {error}");
+        }
+
+        index_page(Some(&self.to_string())).into_response()
+    }
 }
 
-pub async fn get_index() -> Markup { index_page(None) }
+#[derive(Deserialize)]
+pub struct PostIndexQueryParams {
+    #[serde(default)]
+    write_concurrency: Option<usize>,
+}
 
 pub async fn post_index(
     State(storage): State<Operator>,
+    Query(PostIndexQueryParams { write_concurrency }): Query<PostIndexQueryParams>,
     mut multipart: Multipart,
 ) -> Result<Redirect, PostIndexError> {
     // Use the Share For field to create a timestamped UUID with the expiration date
@@ -105,13 +119,14 @@ pub async fn post_index(
     let file_field = get_and_validate_multipart_field("File", &mut multipart).await?;
     let file_name = file_field
         .file_name()
-        .ok_or(PostIndexError::MissingFileName)?;
+        .ok_or(PostIndexError::MissingFileName)?
+        .to_string();
 
     if file_name.is_empty() {
         return Err(PostIndexError::MissingField("File"));
     }
 
-    let extension = RelativePath::new(file_name)
+    let extension = RelativePath::new(&file_name)
         .extension()
         .ok_or(PostIndexError::UnknownFileType)?
         .to_string();
@@ -122,7 +137,8 @@ pub async fn post_index(
     let directory = get_directory_for_expiration(expiration_datetime);
     let file_path = directory.join(format!("{uuid}.{extension}"));
 
-    write_file(&file_path, body_with_io_error, &storage)
+    let write_concurrency = write_concurrency.unwrap_or(4).clamp(1, 16);
+    write_file(&file_path, body_with_io_error, &storage, write_concurrency)
         .await
         .map_err(|err| PostIndexError::Unkown(err.into()))?;
 
@@ -150,6 +166,7 @@ async fn write_file<S, T>(
     file_path: &RelativePath,
     body: S,
     storage: &Operator,
+    write_concurrency: usize,
 ) -> Result<(), opendal::Error>
 where
     S: Stream<Item = opendal::Result<T>>,
@@ -157,7 +174,8 @@ where
 {
     let mut writer = storage
         .writer_with(file_path.as_str())
-        .buffer(625000) // 50 mb so s3 doesn't whine
+        .buffer(625000)
+        .concurrent(write_concurrency) // 50 mb so s3 doesn't whine
         .await?;
     let sink_result = writer.sink(body).await;
     writer.close().await?;

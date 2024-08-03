@@ -3,6 +3,7 @@ use maud::{html, Markup, PreEscaped, DOCTYPE};
 
 pub fn page(content: Markup, is_index: bool) -> Markup {
     let css_source = if cfg!(debug_assertions) {
+        // Cache buster for local development
         format!("/public/style.css?version={}", Utc::now())
     } else {
         // Technially this doesn't need to be a string,
@@ -62,7 +63,9 @@ function formatDuration(ms) {
                             "Not" wbr;
                             "Be" wbr;
                             "This" wbr;
-                            "Hard.com" wbr;
+                            "Hard" wbr;
+                            ".shuttleapp" wbr;
+                            ".rs"
                         }
                         @if !is_index {
                             nav {

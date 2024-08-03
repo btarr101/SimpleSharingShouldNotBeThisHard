@@ -3329,6 +3329,7 @@ dependencies = [
  "opendal",
  "phf",
  "relative-path",
+ "serde",
  "shuttle-axum",
  "shuttle-opendal",
  "shuttle-runtime",
