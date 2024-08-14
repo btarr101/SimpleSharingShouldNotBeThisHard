@@ -1,4 +1,7 @@
+use axum::extract::{multipart::Field, Multipart};
 use chrono::{DateTime, DurationRound, TimeDelta, TimeZone, Utc};
+use futures::Stream;
+use opendal::Operator;
 use relative_path::{RelativePath, RelativePathBuf};
 use uuid::{NoContext, Timestamp, Uuid};
 
@@ -48,4 +51,59 @@ impl DatetimeUUIDv7GeneratorExt for chrono::DateTime<Utc> {
         );
         Uuid::new_v7(timestamp)
     }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum MultipartError {
+    #[error("'{0}' is required!")]
+    MissingField(&'static str),
+    #[error("Unkown error.")]
+    Unkown(#[from] anyhow::Error),
+}
+
+pub async fn get_and_validate_multipart_field<'a>(
+    field_name: &'static str,
+    multipart: &'a mut Multipart,
+) -> Result<Field<'a>, MultipartError> {
+    let field = get_next_multipart_field(multipart)
+        .await?
+        .ok_or(MultipartError::MissingField(field_name))?;
+
+    if field.name() != Some(field_name) {
+        Err(MultipartError::MissingField(field_name))
+    } else {
+        Ok(field)
+    }
+}
+
+pub async fn get_next_multipart_field(
+    multipart: &mut Multipart,
+) -> Result<Option<Field<'_>>, MultipartError> {
+    multipart
+        .next_field()
+        .await
+        .map_err(|err| MultipartError::Unkown(err.into()))
+}
+
+pub async fn write_file<S, T>(
+    file_path: &RelativePath,
+    body: S,
+    storage: &Operator,
+) -> Result<(), opendal::Error>
+where
+    S: Stream<Item = opendal::Result<T>>,
+    T: Into<axum::body::Bytes>,
+{
+    let mut writer = storage
+        .writer_with(file_path.as_str())
+        .buffer(625000)
+        .concurrent(1) // 50 mb so s3 doesn't whine
+        .await?;
+    let sink_result = writer.sink(body).await;
+    writer.close().await?;
+
+    // We want to make sure the writer is closed before propagating an error,
+    // which is why we don't propagate the sink result until after the close
+    // operation.
+    sink_result.map(|_| ())
 }

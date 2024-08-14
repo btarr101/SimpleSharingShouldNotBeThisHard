@@ -390,6 +390,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "axum-htmx"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36cdb6062317f732ed3acf4e9c28c3824092e226726616f46ebdd8cd32c82a41"
+dependencies = [
+ "async-trait",
+ "axum-core 0.4.3",
+ "http 1.1.0",
+]
+
+[[package]]
 name = "axum-range"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3317,6 +3328,7 @@ dependencies = [
  "anyhow",
  "axum 0.7.5",
  "axum-extra",
+ "axum-htmx",
  "axum-range",
  "axum_thiserror",
  "cargo-watch",
