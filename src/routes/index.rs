@@ -1,17 +1,17 @@
+use std::time::Duration;
+
 use axum::{
     extract::{multipart::Field, Multipart, State},
-    response::{IntoResponse, Redirect, Response},
+    response::{IntoResponse, Response},
 };
-use axum_htmx::HxReswap;
 use chrono::{DateTime, Utc};
-use futures::TryStreamExt;
 use maud::{html, Markup, Render};
 use opendal::Operator;
 use relative_path::RelativePath;
 
 use crate::{
     components::page::page,
-    util::{get_directory_for_expiration, write_file, DatetimeUUIDv7GeneratorExt},
+    util::{get_directory_for_expiration, DatetimeUUIDv7GeneratorExt},
 };
 
 static SHARE_FOR_OPTIONS: phf::OrderedMap<&str, chrono::Duration> = phf::phf_ordered_map! {
@@ -26,8 +26,8 @@ static SHARE_FOR_OPTIONS: phf::OrderedMap<&str, chrono::Duration> = phf::phf_ord
 fn index_page(error: Option<&dyn Render>) -> Markup {
     page(
         html! {
-            form method="post" enctype="multipart/form-data"
-            _="on htmx:configRequest(event) if event.detail.elt is me js configRequestParts(event) end end" {
+            form method="post" enctype="multipart/form-data" hx-swap="none"
+            _="on htmx:configRequest(event) if event.detail.elt is me js configMultipartRequest(event) end end" {
                 fieldset {
                     h2 { "Share file" }
                     label for="share-for" { "Share for: " }
@@ -81,10 +81,11 @@ impl IntoResponse for PostError {
     }
 }
 
+/// Generates a presigned URL for uploading a new file.
 pub async fn post(
     State(storage): State<Operator>,
     mut multipart: Multipart,
-) -> Result<Response, PostError> {
+) -> Result<Markup, PostError> {
     // Use the Share For field to create a timestamped UUID with the expiration date
     // This lets us avoid needing to use any sort of other persistance such as a
     // database.
@@ -104,48 +105,11 @@ pub async fn post(
         );
     let expiration_datetime = chrono::Utc::now() + share_for;
 
-    let field = get_next_multipart_field(&mut multipart)
-        .await?
-        .ok_or(PostError::MissingField("File or Parts"))?;
-    match field.name() {
-        Some("File") => {
-            upload_file_in_single_part_and_redirect(field, expiration_datetime, &storage)
-                .await
-                .map(|redirect| redirect.into_response())
-        }
-        Some("Parts") => {
-            let parts = field
-                .text()
-                .await
-                .map_err(|err| PostError::Unkown(err.into()))
-                .and_then(|string| {
-                    string
-                        .parse::<usize>()
-                        .map_err(|err| PostError::Unkown(err.into()))
-                })?
-                .max(1);
-            let file_name = get_and_validate_multipart_field("Filename", &mut multipart)
-                .await?
-                .text()
-                .await
-                .map_err(|err| PostError::Unkown(err.into()))?;
-            upload_file_in_parts_and_redirect(&file_name, parts, expiration_datetime, &storage)
-                .await
-                .map(|markup| (HxReswap(axum_htmx::SwapOption::None), markup).into_response())
-        }
-        _ => Err(PostError::MissingField("File or Parts")),
-    }
-}
-
-async fn upload_file_in_single_part_and_redirect<'a>(
-    file_field: Field<'a>,
-    expiration_datetime: DateTime<Utc>,
-    storage: &Operator,
-) -> Result<Redirect, PostError> {
-    let file_name = file_field
-        .file_name()
-        .ok_or(PostError::MissingFileName)?
-        .to_string();
+    let file_name_field = get_and_validate_multipart_field("Filename", &mut multipart).await?;
+    let file_name = file_name_field
+        .text()
+        .await
+        .map_err(|err| PostError::Unkown(err.into()))?;
 
     if file_name.is_empty() {
         return Err(PostError::MissingFileName);
@@ -156,23 +120,95 @@ async fn upload_file_in_single_part_and_redirect<'a>(
         .ok_or(PostError::UnknownFileType)?
         .to_string();
 
-    let body_with_io_error = file_field
-        .map_err(|err| opendal::Error::new(opendal::ErrorKind::Unexpected, &err.body_text()));
-
     let directory = get_directory_for_expiration(expiration_datetime);
     let uuid_string = expiration_datetime.generate_uuidv7().to_string();
-    let file_path = directory
-        .join(format!("{uuid_string}.{extension}"))
-        .join("0");
+    let file_path = directory.join(format!("{uuid_string}.{extension}"));
 
-    write_file(&file_path, body_with_io_error, storage)
+    let presigned_url = storage
+        .presign_write(file_path.as_str(), Duration::new(3600, 0))
         .await
         .map_err(|err| PostError::Unkown(err.into()))?;
 
-    Ok(Redirect::to(&format!(
-        "/file/{uuid_string}.{extension}/view"
-    )))
+    tracing::info!("{:?}", presigned_url);
+
+    Ok(html!(div id="part-uploaders" hx-swap-oob="true" {
+            (presigned_url.uri().to_string())
+    }))
+
+    // let extension = RelativePath::new(&file_name)
+    //     .extension()
+    //     .ok_or(PostError::UnknownFileType)?
+    //     .to_string();
+
+    // let field = get_next_multipart_field(&mut multipart)
+    //     .await?
+    //     .ok_or(PostError::MissingField("File or Parts"))?;
+    // match field.name() {
+    //     Some("File") => {
+    //         upload_file_in_single_part_and_redirect(field, expiration_datetime, &storage)
+    //             .await
+    //             .map(|redirect| redirect.into_response())
+    //     }
+    //     Some("Parts") => {
+    //         let parts = field
+    //             .text()
+    //             .await
+    //             .map_err(|err| PostError::Unkown(err.into()))
+    //             .and_then(|string| {
+    //                 string
+    //                     .parse::<usize>()
+    //                     .map_err(|err| PostError::Unkown(err.into()))
+    //             })?
+    //             .max(1);
+    //         let file_name = get_and_validate_multipart_field("Filename", &mut multipart)
+    //             .await?
+    //             .text()
+    //             .await
+    //             .map_err(|err| PostError::Unkown(err.into()))?;
+    //         upload_file_in_parts_and_redirect(&file_name, parts, expiration_datetime, &storage)
+    //             .await
+    //             .map(|markup| (HxReswap(axum_htmx::SwapOption::None), markup).into_response())
+    //     }
+    //     _ => Err(PostError::MissingField("File or Parts")),
+    // }
 }
+
+// async fn upload_file_in_single_part_and_redirect<'a>(
+//     file_field: Field<'a>,
+//     expiration_datetime: DateTime<Utc>,
+//     storage: &Operator,
+// ) -> Result<Redirect, PostError> {
+//     let file_name = file_field
+//         .file_name()
+//         .ok_or(PostError::MissingFileName)?
+//         .to_string();
+
+//     if file_name.is_empty() {
+//         return Err(PostError::MissingFileName);
+//     }
+
+//     let extension = RelativePath::new(&file_name)
+//         .extension()
+//         .ok_or(PostError::UnknownFileType)?
+//         .to_string();
+
+//     let body_with_io_error = file_field
+//         .map_err(|err| opendal::Error::new(opendal::ErrorKind::Unexpected, &err.body_text()));
+
+//     let directory = get_directory_for_expiration(expiration_datetime);
+//     let uuid_string = expiration_datetime.generate_uuidv7().to_string();
+//     let file_path = directory
+//         .join(format!("{uuid_string}.{extension}"))
+//         .join("0");
+
+//     write_file(&file_path, body_with_io_error, storage)
+//         .await
+//         .map_err(|err| PostError::Unkown(err.into()))?;
+
+//     Ok(Redirect::to(&format!(
+//         "/file/{uuid_string}.{extension}/view"
+//     )))
+// }
 
 async fn upload_file_in_parts_and_redirect<'a>(
     file_name: &str,

@@ -15,9 +15,7 @@ use opendal::Operator;
 use relative_path::RelativePathBuf;
 use uuid::Uuid;
 
-use crate::util::{
-    get_and_validate_multipart_field, get_directory_for_expiration, write_file, MultipartError,
-};
+use crate::util::{get_and_validate_multipart_field, get_directory_for_expiration, MultipartError};
 
 #[derive(thiserror::Error, Debug, ErrorStatus)]
 pub enum GetError {
@@ -186,9 +184,9 @@ pub async fn post(
 
     tracing::info!("Writing part {}", part);
 
-    write_file(&part_path, body_with_io_error, &storage)
-        .await
-        .map_err(|err| PostError::Unkown(err.into()))?;
+    // write_file(&part_path, body_with_io_error, &storage)
+    //     .await
+    //     .map_err(|err| PostError::Unkown(err.into()))?;
 
     tracing::info!("Finished upload with part {}", part);
 

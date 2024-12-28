@@ -69,7 +69,7 @@ async fn main(
     scheduler
         .add(
             Job::new_async(cron_schedule, move |_uuid, _l| {
-                let storage = storage.clone(); // Clone storage just for this task
+                let storage = storage.clone();
                 Box::pin(async move {
                     if let Err(err) = cleanup(storage).await {
                         tracing::error!("{err}");

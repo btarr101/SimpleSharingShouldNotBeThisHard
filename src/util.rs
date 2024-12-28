@@ -85,25 +85,26 @@ pub async fn get_next_multipart_field(
         .map_err(|err| MultipartError::Unkown(err.into()))
 }
 
-pub async fn write_file<S, T>(
-    file_path: &RelativePath,
-    body: S,
-    storage: &Operator,
-) -> Result<(), opendal::Error>
-where
-    S: Stream<Item = opendal::Result<T>>,
-    T: Into<axum::body::Bytes>,
-{
-    let mut writer = storage
-        .writer_with(file_path.as_str())
-        .buffer(625000)
-        .concurrent(1) // 50 mb so s3 doesn't whine
-        .await?;
-    let sink_result = writer.sink(body).await;
-    writer.close().await?;
+// pub async fn write_file<S, T>(
+//     file_path: &RelativePath,
+//     body: S,
+//     storage: &Operator,
+// ) -> Result<(), opendal::Error>
+// where
+//     S: Stream<Item = opendal::Result<T>>,
+//     T: Into<axum::body::Bytes>,
+// {
+//     let mut writer = storage
+//         .writer_with(file_path.as_str())
+//         .await
+//         .unwrap()
+//         .concurrent(1) // 50 mb so s3 doesn't whine
+//         .await?;
+//     let sink_result = writer.sink(body).await;
+//     writer.close().await?;
 
-    // We want to make sure the writer is closed before propagating an error,
-    // which is why we don't propagate the sink result until after the close
-    // operation.
-    sink_result.map(|_| ())
-}
+//     // We want to make sure the writer is closed before propagating an error,
+//     // which is why we don't propagate the sink result until after the close
+//     // operation.
+//     sink_result.map(|_| ())
+// }
