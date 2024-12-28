@@ -1,3 +1,5 @@
+use std::io::Cursor;
+
 use axum::{
     extract::{Multipart, Path, State},
     http::StatusCode,
@@ -57,24 +59,38 @@ pub async fn get(
         Err(GetError::NotFound)
     } else {
         let directory = get_directory_for_expiration(expiration_datetime);
-        // TODO: Here we need to read the various parts and reconstruct the file
-        let file_path = directory.join(&file_name).join("0"); // TEMP
+        let file_parts_directory = directory.join(&file_name);
+        let file_parts_directory_with_trailing_slash = format!("{file_parts_directory}/");
 
-        let bytes = storage
-            .stat(file_path.as_str())
-            .await
-            .map_err(|err| GetError::Unkown(err.into()))?
-            .content_length();
-
-        // TODO: @ the moment this will read the entire file and only return a portion of it,
-        // if I wanted to be efficient I could parse the range myself rather than using the
-        // Ranged library. We will see if that's worth though.
-        let reader = storage
-            .reader(file_path.as_str())
+        let mut parts = storage
+            .list(&file_parts_directory_with_trailing_slash)
             .await
             .map_err(|err| GetError::Unkown(err.into()))?;
 
-        let body = KnownSize::sized(reader, bytes);
+        parts.sort_by_key(|entry| entry.name().parse::<usize>().unwrap_or(0));
+
+        let mut bytes: Vec<u8> = vec![];
+        for part in &parts {
+            tracing::info!("Handling part {:?}", part);
+            let part_bytes = storage
+                .read(part.path())
+                .await
+                .map_err(|err| GetError::Unkown(err.into()))?;
+            bytes.extend(part_bytes.into_iter());
+        }
+
+        // TODO: for this to really be worth it, the parts upload
+        // must be significantly faster for the added complexity.
+        //
+        // Otherwise we
+        // a) Upload all parts to server and store in temporary directory
+        // b) Combine those parts into a file, then keep it cached locally
+        // c) sync to s3
+        //
+        // Also though, let's !!!investigate presigned URLS!!!
+
+        let bytes_length = bytes.len();
+        let body = KnownSize::sized(Cursor::new(bytes), bytes_length.try_into().unwrap());
         let range = range.map(|TypedHeader(range)| range);
         Ok(Ranged::new(range, body))
     }
@@ -161,8 +177,6 @@ pub async fn post(
         _ => Err(PostError::InvalidUUIDTimestamp),
     }?;
 
-    // TODO stat this directory???
-
     let file_field = get_and_validate_multipart_field("File", &mut multipart).await?;
     let body_with_io_error = file_field
         .map_err(|err| opendal::Error::new(opendal::ErrorKind::Unexpected, &err.body_text()));
@@ -177,9 +191,6 @@ pub async fn post(
         .map_err(|err| PostError::Unkown(err.into()))?;
 
     tracing::info!("Finished upload with part {}", part);
-
-    // TODO DEBUG NO PART 0 but FOLDER!!!
-    // Also error responses!
 
     Ok(html! {})
 }

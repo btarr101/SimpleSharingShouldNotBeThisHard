@@ -1,11 +1,9 @@
-use std::str::from_utf8;
-
 use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::TimeZone;
 use humantime::format_duration;
 use maud::{html, Markup};
 use mime_guess::{mime, Mime};
@@ -92,20 +90,7 @@ pub async fn get(
         .extension()
         .and_then(|extension| mime_guess::from_ext(extension).first());
 
-    tracing::debug!("{:?}", mime_type);
-
-    let file_viewer = if let Some(possible_viewer) =
-        mime_type.map(|mime| file_viewer(&file_name, mime, expiration_datetime, &storage))
-    {
-        Some(possible_viewer.await)
-    } else {
-        None
-    }
-    .transpose()
-    .inspect_err(|err| tracing::error!("Failed to create viewer for {}: {}", &file_name, err))
-    .ok()
-    .flatten()
-    .flatten();
+    let file_viewer = mime_type.and_then(|mime| file_viewer(&file_name, mime));
 
     let timer_script = format!(
         "init repeat forever wait 1s then js return formatDuration(new Date(\"{}\") - new Date()) end then put it into me end",
@@ -125,7 +110,7 @@ pub async fn get(
                         "."
                     }
                     ul {
-                        li { a href=(file_source) download=(file_name) { "Download" } }
+                        li hx-disable { a href=(file_source) download=(file_name) { "Download" } }
                         br;
                         li {
                             a href="" { "Share" }
@@ -146,50 +131,37 @@ pub async fn get(
     ))
 }
 
-async fn file_viewer(
-    file_name: &RelativePath,
-    mime: Mime,
-    expiration_datetime: DateTime<Utc>,
-    storage: &Operator,
-) -> anyhow::Result<Option<Markup>> {
+fn file_viewer(file_name: &RelativePath, mime: Mime) -> Option<Markup> {
     let file_source = format!("/file/{file_name}");
     match (mime.type_(), mime.subtype()) {
-        (mime::VIDEO, _) => Ok(Some(html!(
+        (mime::VIDEO, _) => Some(html!(
             center {
                 video controls {
                     source src=(file_source) type=(mime.to_string());
                 }
             }
-        ))),
-        (mime::IMAGE, _) => Ok(Some(html!(
+        )),
+        (mime::IMAGE, _) => Some(html!(
             center {
                 img src=(file_source) alt="Shared image";
             }
-        ))),
-        (mime::AUDIO, _) => Ok(Some(html!(
+        )),
+        (mime::AUDIO, _) => Some(html!(
             center {
                 audio controls {
                     source src=(file_source) type=(mime.to_string());
                 }
             }
-        ))),
-        (mime::TEXT, _) => {
-            let directory = get_directory_for_expiration(expiration_datetime);
-            let file_path = directory.join(file_name);
-
-            let bytes = storage.read(file_path.as_str()).await?;
-            let content = from_utf8(&bytes)?;
-
-            Ok(Some(html!(
-                hr;
-                pre {
-                    code {
-                        (content)
-                    }
+        )),
+        (mime::TEXT, _) => Some(html!(
+            hr;
+            pre {
+                code hx-get=(file_source) hx-swap="innerHTML" hx-trigger="load" {
+                    "Loading..."
                 }
-                hr;
-            )))
-        }
-        _ => Ok(None),
+            }
+            hr;
+        )),
+        _ => None,
     }
 }
