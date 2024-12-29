@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -8,7 +10,7 @@ use humantime::format_duration;
 use maud::{html, Markup};
 use mime_guess::{mime, Mime};
 use opendal::Operator;
-use relative_path::{RelativePath, RelativePathBuf};
+use relative_path::RelativePathBuf;
 use uuid::Uuid;
 
 use crate::{
@@ -63,11 +65,11 @@ pub async fn get(
     }?;
 
     let now = chrono::Utc::now();
-    let file_exists = if now < expiration_datetime {
-        let directory = get_directory_for_expiration(expiration_datetime);
-        let path = directory.join(format!("{file_name}/"));
 
-        match storage.stat(path.as_str()).await {
+    let file_expired = now >= expiration_datetime;
+    let file_path = get_directory_for_expiration(expiration_datetime).join(&file_name);
+    let file_exists = if !file_expired {
+        match storage.stat(file_path.as_str()).await {
             Ok(_) => Ok(true),
             Err(err) => match err.kind() {
                 opendal::ErrorKind::NotFound => Ok(false),
@@ -78,7 +80,23 @@ pub async fn get(
         false
     };
 
-    let file_source = format!("/file/{file_name}");
+    if !file_exists {
+        return Ok(page(
+            html! {
+                fieldset {
+                    h2 { "Viewing " code { (file_name) }}
+                    p { "This file has either expired or never even existed in the first place." }
+                }
+            },
+            false,
+        ));
+    }
+
+    let presigned_request = storage
+        .presign_read(file_path.as_str(), Duration::new(3600, 0))
+        .await
+        .map_err(|err| GetError::Unkown(err.into()))?;
+
     let expires_in = (expiration_datetime - now)
         .to_std()
         .map(|duration| {
@@ -90,7 +108,8 @@ pub async fn get(
         .extension()
         .and_then(|extension| mime_guess::from_ext(extension).first());
 
-    let file_viewer = mime_type.and_then(|mime| file_viewer(&file_name, mime));
+    let file_viewer =
+        mime_type.and_then(|mime| file_viewer(&presigned_request.uri().to_string(), mime));
 
     let timer_script = format!(
         "init repeat forever wait 1s then js return formatDuration(new Date(\"{}\") - new Date()) end then put it into me end",
@@ -101,29 +120,25 @@ pub async fn get(
         html! {
             fieldset {
                 h2 { "Viewing " code { (file_name) }}
-                @if file_exists {
-                    p {
-                        "This file expires in "
-                        time _=(timer_script) {
-                            (expires_in)
-                        }
-                        "."
+                p {
+                    "This file expires in "
+                    time _=(timer_script) {
+                        (expires_in)
                     }
-                    ul {
-                        li hx-disable { a href=(file_source) download=(file_name) { "Download" } }
-                        br;
-                        li {
-                            a href="" { "Share" }
-                            " (Right click and choose \"Copy Link Address\")"
-                        }
+                    "."
+                }
+                ul {
+                    li hx-disable { a href=(presigned_request.uri()) download=(file_name) { "Download" } }
+                    br;
+                    li {
+                        a href="" { "Share" }
+                        " (Right click and choose \"Copy Link Address\")"
                     }
-                    @if let Some(file_viewer) = file_viewer {
-                        br;
-                        (file_viewer)
-                        br;
-                    }
-                } @else {
-                    p { "This file has either expired or never even existed in the first place." }
+                }
+                @if let Some(file_viewer) = file_viewer {
+                    br;
+                    (file_viewer)
+                    br;
                 }
             }
         },
@@ -131,8 +146,7 @@ pub async fn get(
     ))
 }
 
-fn file_viewer(file_name: &RelativePath, mime: Mime) -> Option<Markup> {
-    let file_source = format!("/file/{file_name}");
+fn file_viewer(file_source: &str, mime: Mime) -> Option<Markup> {
     match (mime.type_(), mime.subtype()) {
         (mime::VIDEO, _) => Some(html!(
             center {

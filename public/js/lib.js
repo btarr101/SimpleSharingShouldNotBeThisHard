@@ -32,7 +32,24 @@ function configMultipartRequest(event) {
   form.delete("File");
   form.append("Filename", file.name);
 
-  console.log(form);
+  console.log("multipart");
+}
+
+/**
+ * Adds the file content as a binary octet stream to the xhr request.
+ *
+ * @param {Event} event
+ */
+function beforePresignedRequest(event) {
+  /** @type {XMLHttpRequest} */
+  const xhr = event.detail.xhr;
+  xhr.setRequestHeader("Content-Type", "application/octet-stream");
+
+  /** @type {File} */
+  const file = event.detail.requestConfig.parameters.get("File");
+
+  const originalSend = xhr.send;
+  xhr.send = () => originalSend.call(xhr, file);
 }
 
 /**
