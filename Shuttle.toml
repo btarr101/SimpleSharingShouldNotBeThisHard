@@ -1,0 +1,4 @@
+[build]
+assets = [
+	"public/*", # include all files and subdirs in static/
+]

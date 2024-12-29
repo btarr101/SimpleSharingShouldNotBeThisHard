@@ -31,6 +31,7 @@ pub fn page(content: Markup, is_index: bool) -> Markup {
                 link rel="manifest" href="/public/site.webmanifest";
                 link rel="mask-icon" href="/public/safari-pinned-tab.svg" color="#5bbad5";
 
+                meta name="htmx-config" content="{\"selfRequestsOnly\":false}";
                 script src="/public/js/htmx.min.js" defer {};
                 script src="/public/js/hyperscript.min.js" defer {};
                 script src="/public/js/htmx-ext-loading-states.js" defer {};

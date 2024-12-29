@@ -35,10 +35,6 @@ async fn main(
     // TODO: Move this setup into a constructor for the `TempShareService`.
     let router = Router::new()
         .route("/", get(routes::index::get).post(routes::index::post))
-        .route(
-            "/file/:file_name",
-            get(routes::file::index::get).post(routes::file::index::post),
-        )
         .layer(DefaultBodyLimit::disable())
         .route("/file/:file_name/view", get(routes::file::view::get))
         .nest_service(
@@ -69,7 +65,7 @@ async fn main(
     scheduler
         .add(
             Job::new_async(cron_schedule, move |_uuid, _l| {
-                let storage = storage.clone(); // Clone storage just for this task
+                let storage = storage.clone();
                 Box::pin(async move {
                     if let Err(err) = cleanup(storage).await {
                         tracing::error!("{err}");

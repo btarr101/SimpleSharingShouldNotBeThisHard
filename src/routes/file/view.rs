@@ -1,16 +1,16 @@
-use std::str::from_utf8;
+use std::time::Duration;
 
 use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::TimeZone;
 use humantime::format_duration;
 use maud::{html, Markup};
 use mime_guess::{mime, Mime};
 use opendal::Operator;
-use relative_path::{RelativePath, RelativePathBuf};
+use relative_path::RelativePathBuf;
 use uuid::Uuid;
 
 use crate::{
@@ -65,11 +65,11 @@ pub async fn get(
     }?;
 
     let now = chrono::Utc::now();
-    let file_exists = if now < expiration_datetime {
-        let directory = get_directory_for_expiration(expiration_datetime);
-        let path = directory.join(format!("{file_name}/"));
 
-        match storage.stat(path.as_str()).await {
+    let file_expired = now >= expiration_datetime;
+    let file_path = get_directory_for_expiration(expiration_datetime).join(&file_name);
+    let file_exists = if !file_expired {
+        match storage.stat(file_path.as_str()).await {
             Ok(_) => Ok(true),
             Err(err) => match err.kind() {
                 opendal::ErrorKind::NotFound => Ok(false),
@@ -80,7 +80,23 @@ pub async fn get(
         false
     };
 
-    let file_source = format!("/file/{file_name}");
+    if !file_exists {
+        return Ok(page(
+            html! {
+                fieldset {
+                    h2 { "Viewing " code { (file_name) }}
+                    p { "This file has either expired or never even existed in the first place." }
+                }
+            },
+            false,
+        ));
+    }
+
+    let presigned_request = storage
+        .presign_read(file_path.as_str(), Duration::new(3600, 0))
+        .await
+        .map_err(|err| GetError::Unkown(err.into()))?;
+
     let expires_in = (expiration_datetime - now)
         .to_std()
         .map(|duration| {
@@ -92,20 +108,8 @@ pub async fn get(
         .extension()
         .and_then(|extension| mime_guess::from_ext(extension).first());
 
-    tracing::debug!("{:?}", mime_type);
-
-    let file_viewer = if let Some(possible_viewer) =
-        mime_type.map(|mime| file_viewer(&file_name, mime, expiration_datetime, &storage))
-    {
-        Some(possible_viewer.await)
-    } else {
-        None
-    }
-    .transpose()
-    .inspect_err(|err| tracing::error!("Failed to create viewer for {}: {}", &file_name, err))
-    .ok()
-    .flatten()
-    .flatten();
+    let file_viewer =
+        mime_type.and_then(|mime| file_viewer(&presigned_request.uri().to_string(), mime));
 
     let timer_script = format!(
         "init repeat forever wait 1s then js return formatDuration(new Date(\"{}\") - new Date()) end then put it into me end",
@@ -116,29 +120,25 @@ pub async fn get(
         html! {
             fieldset {
                 h2 { "Viewing " code { (file_name) }}
-                @if file_exists {
-                    p {
-                        "This file expires in "
-                        time _=(timer_script) {
-                            (expires_in)
-                        }
-                        "."
+                p {
+                    "This file expires in "
+                    time _=(timer_script) {
+                        (expires_in)
                     }
-                    ul {
-                        li { a href=(file_source) download=(file_name) { "Download" } }
-                        br;
-                        li {
-                            a href="" { "Share" }
-                            " (Right click and choose \"Copy Link Address\")"
-                        }
+                    "."
+                }
+                ul {
+                    li hx-disable { a href=(presigned_request.uri()) download=(file_name) { "Download" } }
+                    br;
+                    li {
+                        a href="" { "Share" }
+                        " (Right click and choose \"Copy Link Address\")"
                     }
-                    @if let Some(file_viewer) = file_viewer {
-                        br;
-                        (file_viewer)
-                        br;
-                    }
-                } @else {
-                    p { "This file has either expired or never even existed in the first place." }
+                }
+                @if let Some(file_viewer) = file_viewer {
+                    br;
+                    (file_viewer)
+                    br;
                 }
             }
         },
@@ -146,50 +146,36 @@ pub async fn get(
     ))
 }
 
-async fn file_viewer(
-    file_name: &RelativePath,
-    mime: Mime,
-    expiration_datetime: DateTime<Utc>,
-    storage: &Operator,
-) -> anyhow::Result<Option<Markup>> {
-    let file_source = format!("/file/{file_name}");
+fn file_viewer(file_source: &str, mime: Mime) -> Option<Markup> {
     match (mime.type_(), mime.subtype()) {
-        (mime::VIDEO, _) => Ok(Some(html!(
+        (mime::VIDEO, _) => Some(html!(
             center {
                 video controls {
                     source src=(file_source) type=(mime.to_string());
                 }
             }
-        ))),
-        (mime::IMAGE, _) => Ok(Some(html!(
+        )),
+        (mime::IMAGE, _) => Some(html!(
             center {
                 img src=(file_source) alt="Shared image";
             }
-        ))),
-        (mime::AUDIO, _) => Ok(Some(html!(
+        )),
+        (mime::AUDIO, _) => Some(html!(
             center {
                 audio controls {
                     source src=(file_source) type=(mime.to_string());
                 }
             }
-        ))),
-        (mime::TEXT, _) => {
-            let directory = get_directory_for_expiration(expiration_datetime);
-            let file_path = directory.join(file_name);
-
-            let bytes = storage.read(file_path.as_str()).await?;
-            let content = from_utf8(&bytes)?;
-
-            Ok(Some(html!(
-                hr;
-                pre {
-                    code {
-                        (content)
-                    }
+        )),
+        (mime::TEXT, _) => Some(html!(
+            hr;
+            pre {
+                code hx-get=(file_source) hx-swap="innerHTML" hx-trigger="load" {
+                    "Loading..."
                 }
-                hr;
-            )))
-        }
-        _ => Ok(None),
+            }
+            hr;
+        )),
+        _ => None,
     }
 }
